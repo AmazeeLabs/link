@@ -1404,3 +1404,84 @@ function link_i18n_string_list_field_alter(&$strings, $type = NULL, $object = NU
     $strings['field'][$object['field_name']][$object['bundle']]['title_value']['string'] = $object['settings']['title_value'];
   }
 }
+
+/**
+ * Implements hook_tmgmt_source_translation_structure().
+ */
+function link_tmgmt_source_translation_structure($entity_type, $entity, $field, $instance, $langcode, $items) {
+  $structure = array();
+  if (!empty($items)) {
+    $structure['#label'] = check_plain($instance['label']);
+    foreach ($items as $delta => $value) {
+      $structure[$delta]['#label'] = t('Link #@delta', array('@delta' => $delta));
+      $structure[$delta]['title'] = array(
+        '#label' => t('Text'),
+        '#text' => $value['title'],
+        '#translate' => TRUE,
+      );
+      $structure[$delta]['url'] = array(
+        '#label' => t('URL'),
+        '#text' => $value['url'],
+        '#translate' => TRUE,
+      );
+      if (isset($value['attributes']['title'])) {
+        $structure[$delta]['attribute_title'] = array(
+          '#label' => t('Title attribute'),
+          '#text' => $value['attributes']['title'],
+          '#translate' => TRUE,
+        );
+      }
+      // Attributes other than "title" are not translatable.
+      $attributes = isset($value['attributes']) ? $value['attributes'] : array();
+      unset($attributes['title']);
+      foreach (array_keys($attributes) as $attribute) {
+        $structure[$delta]['attribute_' . $attribute] = array(
+          '#label' => '',
+          '#text' => $attributes[$attribute],
+          '#translate' => FALSE,
+        );
+      }
+    }
+  }
+  return $structure;
+}
+
+/**
+ * Implements hook_field_type_tmgmt_populate_entity().
+ *
+ * Populates a link field with translation using the logic of the original
+ * tmgmt function.
+ *
+ * @see tmgmt_field_populate_entity()
+ */
+function link_field_type_tmgmt_populate_entity($entity_type, $entity, $field, $instance, $langcode, $data, $use_field_translation) {
+  $field_langcode = $field['translatable'] ? $langcode : LANGUAGE_NONE;
+  if (!$use_field_translation) {
+    $entity->{$field_name} = array($field_langcode => array());
+  }
+  $field_name = $field['field_name'];
+  foreach (element_children($data[$field_name]) as $delta) {
+
+    $columns = array(
+      'title' => $data[$field_name][$delta]['title']['#translation']['#text'],
+      'url' => $data[$field_name][$delta]['url']['#translation']['#text'],
+      'attributes' => array(),
+    );
+    if (isset($data[$field_name][$delta]['attribute_title'])) {
+      // Set to empty string if translation was not provided.
+      $columns['attributes']['title'] = isset($data[$field_name][$delta]['attribute_title']['#translation']['#text'])
+        ? $data[$field_name][$delta]['attribute_title']['#translation']['#text'] : '';
+    }
+    // Process other untranslatable attributes.
+    foreach ($data[$field_name][$delta] as $key => $value) {
+      if (strpos($key, 'attribute_') === 0 && $key != 'attribute_title') {
+        $columns['attributes'][substr($key, 10)] = $value['#text'];
+      }
+    }
+
+    if (!isset($entity->{$field_name}[$field_langcode][$delta])) {
+      $entity->{$field_name}[$field_langcode][$delta] = array();
+    }
+    $entity->{$field_name}[$field_langcode][$delta] = array_merge($entity->{$field_name}[$field_langcode][$delta], $columns);
+  }
+}
