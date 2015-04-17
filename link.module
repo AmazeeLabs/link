@@ -384,6 +384,12 @@ function _link_process(&$item, $delta, $field, $entity) {
     $item['attributes'] = array();
   }
 
+  // The "Open URL in a New Window" option is a checkbox. If it is not checked,
+  // the returning value is 0. Remove it in this case.
+  if (isset($item['attributes']['target']) && empty($item['attributes']['target'])) {
+    unset($item['attributes']['target']);
+  }
+
   // Serialize the attributes array.
   if (!is_string($item['attributes'])) {
     $item['attributes'] = serialize($item['attributes']);

@@ -115,3 +115,43 @@ function link_update_7001() {
     }
   }
 }
+
+/**
+ * Update broken "target" attributes.
+ */
+function link_update_7002() {
+  $affected = FALSE;
+  foreach (field_info_fields() as $field_info) {
+    if ($field_info['type'] == 'link_field' && $field_info['storage']['type'] == 'field_sql_storage') {
+      foreach (array(FIELD_LOAD_CURRENT, FIELD_LOAD_REVISION) as $kind) {
+        $table = key($field_info['storage']['details']['sql'][$kind]);
+        $field = $field_info['storage']['details']['sql'][$kind][$table]['attributes'];
+        $rows = db_select($table, 't')
+          ->condition("t.$field", '%' . db_like('s:6:"target";i:0;') . '%', 'LIKE')
+          ->fields('t', array('entity_type', 'entity_id', 'deleted', 'delta', 'language', $field))
+          ->execute()
+          ->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $row) {
+          list($entity_type, $entity_id, $deleted, $delta, $language, $attributes) = array_values($row);
+          $attributes = unserialize($attributes);
+          // Check again.
+          if (isset($attributes['target']) && $attributes['target'] === 0) {
+            unset($attributes['target']);
+            db_update($table)
+              ->condition('entity_type', $entity_type)
+              ->condition('entity_id', $entity_id)
+              ->condition('deleted', $deleted)
+              ->condition('delta', $delta)
+              ->condition('language', $language)
+              ->fields(array($field => serialize($attributes)))
+              ->execute();
+            $affected = TRUE;
+          }
+        }
+      }
+    }
+  }
+  if ($affected) {
+    drupal_flush_all_caches();
+  }
+}
